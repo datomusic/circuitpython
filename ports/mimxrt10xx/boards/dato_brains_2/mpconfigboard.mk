@@ -1,0 +1,10 @@
+USB_VID = 0x16D0
+USB_PID = 0x10A7
+USB_PRODUCT = "DUO Brains 2 Circuitpython"
+USB_MANUFACTURER = "Dato"
+
+CHIP_VARIANT = MIMXRT1011DAE5A
+CHIP_FAMILY = MIMXRT1011
+FLASH = W25Q16JV
+
+# Include these Python libraries in the firmware
