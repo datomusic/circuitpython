@@ -72,7 +72,18 @@ STATIC const mp_rom_map_elem_t board_module_globals_table[] = {
     { MP_OBJ_NEW_QSTR(MP_QSTR_COL_2), MP_ROM_PTR(&pin_GPIO_AD_08) },
     { MP_OBJ_NEW_QSTR(MP_QSTR_COL_3), MP_ROM_PTR(&pin_GPIO_AD_07) },
     { MP_OBJ_NEW_QSTR(MP_QSTR_COL_4), MP_ROM_PTR(&pin_GPIO_AD_06) },
-    { MP_OBJ_NEW_QSTR(MP_QSTR_COL_5), MP_ROM_PTR(&pin_GPIO_AD_05) },
-    { MP_OBJ_NEW_QSTR(MP_QSTR_COL_6), MP_ROM_PTR(&pin_GPIO_AD_04) },
+    { MP_OBJ_NEW_QSTR(MP_QSTR_COL_5), MP_ROM_PTR(&pin_GPIO_SD_13) },
+    { MP_OBJ_NEW_QSTR(MP_QSTR_COL_6), MP_ROM_PTR(&pin_GPIO_AD_05) },
+
+    // Synth flatcable connector
+    { MP_OBJ_NEW_QSTR(MP_QSTR_LED_1), MP_ROM_PTR(&pin_GPIO_08) },
+    { MP_OBJ_NEW_QSTR(MP_QSTR_LED_2), MP_ROM_PTR(&pin_GPIO_07) },
+    { MP_OBJ_NEW_QSTR(MP_QSTR_LED_3), MP_ROM_PTR(&pin_GPIO_06) },
+    { MP_OBJ_NEW_QSTR(MP_QSTR_SW2), MP_ROM_PTR(&pin_GPIO_00) },
+    { MP_OBJ_NEW_QSTR(MP_QSTR_SW1), MP_ROM_PTR(&pin_GPIO_02) },
+    { MP_OBJ_NEW_QSTR(MP_QSTR_SYN_ADDR0), MP_ROM_PTR(&pin_GPIO_SD_00) },
+    { MP_OBJ_NEW_QSTR(MP_QSTR_SYN_ADDR1), MP_ROM_PTR(&pin_GPIO_SD_01) },
+    { MP_OBJ_NEW_QSTR(MP_QSTR_SYN_ADDR2), MP_ROM_PTR(&pin_GPIO_SD_02) },
+    { MP_OBJ_NEW_QSTR(MP_QSTR_SYN_MUX_IO), MP_ROM_PTR(&pin_GPIO_AD_14) },
 };
 MP_DEFINE_CONST_DICT(board_module_globals, board_module_globals_table);
