@@ -21,6 +21,7 @@ typedef struct FileReader {
   uint32_t length; // In bytes
   uint16_t data_start;  // Where the data values start
   uint32_t bytes_remaining;
+
 } FileReader;
 
 typedef struct {
@@ -31,9 +32,7 @@ typedef struct {
   uint16_t buffer_index;
 
   uint32_t sample_rate;
-  // uint32_t stretch_factor;
-
-  uint32_t max_buffer_length;
+  float stretch_factor;
 
 } audioio_wavefile_obj_t;
 

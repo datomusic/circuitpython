@@ -16,6 +16,9 @@
 #include "shared-module/audiocore/WaveFile.h"
 
 #define BITS_PER_SAMPLE 8
+#define MAX_BUFFER_LENGTH 256
+
+#define LOG(...) mp_printf(&mp_plat_print, __VA_ARGS__);
 
 struct wave_format_chunk {
   uint16_t audio_format;
@@ -29,14 +32,15 @@ struct wave_format_chunk {
 
 void common_hal_audioio_wavefile_set_stretch(audioio_wavefile_obj_t *self,
                                              const uint32_t stretch_factor) {
-  // self->stretch_factor = stretch_factor;
+  mp_printf(&mp_plat_print, "Setting stretch factor: %u\n", stretch_factor);
+  self->stretch_factor = stretch_factor / 100.;
 }
 
 void common_hal_audioio_wavefile_construct(audioio_wavefile_obj_t *self,
                                            pyb_file_obj_t *file,
                                            uint8_t *buffer,
-                                           size_t buffer_size) {
-  // self->stretch_factor = 100;
+                                           size_t _buffer_size) {
+  self->stretch_factor = 1.;
   // Load the wave
   self->file.handle = file;
   uint8_t chunk_header[16];
@@ -92,29 +96,18 @@ void common_hal_audioio_wavefile_construct(audioio_wavefile_obj_t *self,
   self->file.length = data_length;
   self->file.data_start = fp->fptr;
 
-  // Try to allocate two buffers, one will be loaded from file and the other
-  // DMAed to DAC.
-  if (buffer_size) {
-    self->max_buffer_length = buffer_size / 2;
-    self->buffer1.data = buffer;
-    self->buffer1.length = self->max_buffer_length / 2;
-    self->buffer2.data = buffer + self->max_buffer_length;
-    self->buffer2.length = self->max_buffer_length / 2;
-  } else {
-    self->max_buffer_length = 256;
-    self->buffer1.data = m_malloc(self->max_buffer_length);
-    self->buffer1.length = self->max_buffer_length;
-    if (self->buffer1.data == NULL) {
-      common_hal_audioio_wavefile_deinit(self);
-      m_malloc_fail(self->max_buffer_length);
-    }
+  self->buffer1.data = m_malloc(MAX_BUFFER_LENGTH);
+  self->buffer1.length = MAX_BUFFER_LENGTH;
+  if (self->buffer1.data == NULL) {
+    common_hal_audioio_wavefile_deinit(self);
+    m_malloc_fail(MAX_BUFFER_LENGTH);
+  }
 
-    self->buffer2.data = m_malloc(self->max_buffer_length);
-    self->buffer2.length = self->max_buffer_length;
-    if (self->buffer2.data == NULL) {
-      common_hal_audioio_wavefile_deinit(self);
-      m_malloc_fail(self->max_buffer_length);
-    }
+  self->buffer2.data = m_malloc(MAX_BUFFER_LENGTH);
+  self->buffer2.length = MAX_BUFFER_LENGTH;
+  if (self->buffer2.data == NULL) {
+    common_hal_audioio_wavefile_deinit(self);
+    m_malloc_fail(MAX_BUFFER_LENGTH);
   }
 }
 
@@ -148,7 +141,7 @@ common_hal_audioio_wavefile_get_channel_count(audioio_wavefile_obj_t *self) {
 }
 
 void audioio_wavefile_reset_buffer(audioio_wavefile_obj_t *self,
-                                   bool single_channel_output,
+                                   bool _single_channel_output,
                                    uint8_t _channel) {
   // We don't reset the buffer index in case we're looping and we have an odd
   // number of buffer loads
@@ -157,7 +150,7 @@ void audioio_wavefile_reset_buffer(audioio_wavefile_obj_t *self,
 }
 
 static uint32_t add_padding(uint8_t *buffer, UINT length_read) {
-  uint32_t pad_count = length_read % sizeof(uint32_t);
+  const uint32_t pad_count = length_read % sizeof(uint32_t);
   for (uint32_t i = 0; i < pad_count; i++) {
     ((uint8_t *)(buffer))[length_read / sizeof(uint8_t) - i - 1] = 0x80;
   }
@@ -176,7 +169,7 @@ static Buffer *get_indexed_buffer(audioio_wavefile_obj_t *self,
 
 audioio_get_buffer_result_t
 audioio_wavefile_get_buffer(audioio_wavefile_obj_t *self,
-                            const bool single_channel_output, uint8_t _channel,
+                            const bool _single_channel_output, uint8_t _channel,
                             uint8_t **buffer, uint32_t *buffer_length) {
 
   if (self->file.bytes_remaining == 0) {
@@ -188,33 +181,51 @@ audioio_wavefile_get_buffer(audioio_wavefile_obj_t *self,
   struct Buffer *target_buffer = get_indexed_buffer(self, self->buffer_index);
 
   const uint32_t bytes_to_read =
-      (self->max_buffer_length > self->file.bytes_remaining)
+      (MAX_BUFFER_LENGTH > self->file.bytes_remaining)
           ? self->file.bytes_remaining
-          : self->max_buffer_length;
+          : (self->stretch_factor * MAX_BUFFER_LENGTH);
+
+  LOG("bytes_to_read: %u\n", bytes_to_read);
 
   UINT read_count;
-  if (f_read(&self->file.handle->fp, target_buffer->data, bytes_to_read,
-             &read_count) != FR_OK ||
-      read_count != bytes_to_read) {
+  uint8_t bytes[MAX_BUFFER_LENGTH * 2];
+  const bool read_result =
+      f_read(&self->file.handle->fp, bytes, bytes_to_read, &read_count);
+  if (read_result != FR_OK || read_count != bytes_to_read) {
     return GET_BUFFER_ERROR;
   }
 
   self->file.bytes_remaining -= read_count;
+  LOG("bytes remaining: %u\n", self->file.bytes_remaining);
 
-  // Pad the last buffer to word align it.
-  const bool is_last_buffer =
-      self->file.bytes_remaining == 0 && read_count % sizeof(uint32_t) != 0;
-  if (is_last_buffer) {
-    read_count += add_padding(target_buffer->data, read_count);
+  uint32_t target_index = 0;
+  for (; target_index < MAX_BUFFER_LENGTH; ++target_index) {
+    const uint32_t source_index = target_index * self->stretch_factor;
+    if (source_index >= read_count) {
+      break;
+    }
+
+    target_buffer->data[target_index] = bytes[source_index];
   }
 
-  target_buffer->length = read_count;
+  target_buffer->length = target_index;
+
+  // Pad the last buffer to word align it.
+  const bool is_last_buffer = self->file.bytes_remaining == 0 &&
+                              target_buffer->length % sizeof(uint32_t) != 0;
+  if (is_last_buffer) {
+    LOG("Padding last buffer\n");
+    target_buffer->length +=
+        add_padding(target_buffer->data, target_buffer->length);
+  }
 
   struct Buffer *out_buffer = get_indexed_buffer(self, self->buffer_index + 1);
 
   *buffer = out_buffer->data;
   *buffer_length = out_buffer->length;
   self->buffer_index += 1;
+
+  LOG("Test print!\n");
 
   return self->file.bytes_remaining == 0 ? GET_BUFFER_DONE
                                          : GET_BUFFER_MORE_DATA;
